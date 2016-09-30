@@ -1,11 +1,13 @@
 module Main exposing (..)
 
-import Html exposing (text, Html)
-import Html.App exposing (..)
+import Html exposing (..)
+import Html.App as App
+import Html.Events exposing (onClick)
+import Monzo
 
 
 main =
-    Html.App.program
+    App.program
         { init = init
         , update = update
         , view = view
@@ -14,21 +16,33 @@ main =
 
 
 type alias Model =
-    Int
+    { authToken : Monzo.Token
+    , whoAmIData : Monzo.WhoAmI
+    }
 
 
 type Msg
-    = Msg
+    = QueryMonzo
+    | FromMonzo Monzo.Msg
 
 
 init : ( Model, Cmd Msg )
 init =
-    ( 0, Cmd.none )
+    ( { authToken = Monzo.auth
+      , whoAmIData = Monzo.whoAmIInit
+      }
+    , Cmd.none
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    ( model, Cmd.none )
+    case msg of
+        QueryMonzo ->
+            ( model, Cmd.map FromMonzo <| Monzo.whoAmIRequest model.authToken )
+
+        FromMonzo details ->
+            ( { model | whoAmIData = Monzo.whoAmIHandler details }, Cmd.none )
 
 
 subscriptions : Model -> Sub Msg
@@ -38,4 +52,8 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
-    text "Hello World!"
+    div []
+        [ div [] [ text model.whoAmIData.client_id ]
+        , div [] [ text model.whoAmIData.user_id ]
+        , button [ onClick QueryMonzo ] [ text "Get details" ]
+        ]
