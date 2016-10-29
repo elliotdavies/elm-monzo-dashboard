@@ -3,13 +3,7 @@ require('./main.css');
 var Elm = require('./Main.elm');
 var root = document.getElementById('root');
 
-
-// This should come from a separate file
-var env = {
-  clientId: "oauthclient_00009Cq3YjQYO4voDQt7Ev",
-  clientSecret: "/BwwMQXNYLcFgbfitp+9cDYs3vS/ohHlf/1L7Ak3jT2C2TOR5ThGujaVN0WwfAViJztytE7LnaR7lll0mRJR"
-}
-
+var env = require('json!../env.json');
 
 function getItem(key) {
   return localStorage ? localStorage.getItem(key) : null;
