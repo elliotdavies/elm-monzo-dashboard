@@ -78,7 +78,7 @@ update msg model =
                         Monzo.Accounts ->
                             AccountsHandler
             in
-                ( model, Cmd.map handler <| Monzo.makeApiRequest (Just "model.auth.accessToken") endpoint )
+                ( model, Cmd.map handler <| Monzo.makeApiRequest model.auth.accessToken endpoint )
 
         WhoAmIHandler monzoMsg ->
             case Monzo.whoAmIHandler monzoMsg of
