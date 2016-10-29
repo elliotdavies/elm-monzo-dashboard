@@ -3,11 +3,12 @@ module Main exposing (..)
 import Html exposing (..)
 import Html.App as App
 import Html.Events exposing (onClick)
-import Monzo
+import Monzo.Auth as Auth
+import Monzo.Monzo as Monzo
 
 
 main =
-    App.program
+    App.programWithFlags
         { init = init
         , update = update
         , view = view
@@ -16,7 +17,7 @@ main =
 
 
 type alias Model =
-    { authToken : Monzo.Token
+    { auth : Auth.Model
     , err : Maybe String
     , whoAmIData :
         Maybe
@@ -34,26 +35,38 @@ type alias Model =
     }
 
 
+init : Auth.Flags -> ( Model, Cmd Msg )
+init flags =
+    let
+        ( authModel, authCmds ) =
+            Auth.init flags
+    in
+        ( { auth = authModel
+          , err = Nothing
+          , whoAmIData = Nothing
+          , accountsData = Nothing
+          }
+        , Cmd.map AuthMsg authCmds
+        )
+
+
 type Msg
     = QueryMonzo Monzo.Endpoint
     | WhoAmIHandler Monzo.Msg
     | AccountsHandler Monzo.Msg
-
-
-init : ( Model, Cmd Msg )
-init =
-    ( { authToken = Monzo.auth
-      , err = Nothing
-      , whoAmIData = Nothing
-      , accountsData = Nothing
-      }
-    , Cmd.none
-    )
+    | AuthMsg Auth.Msg
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        AuthMsg authMsg ->
+            let
+                ( authModel, authCmds ) =
+                    Auth.update authMsg model.auth
+            in
+                ( { model | auth = authModel }, Cmd.map AuthMsg authCmds )
+
         QueryMonzo endpoint ->
             let
                 handler =
@@ -64,7 +77,7 @@ update msg model =
                         Monzo.Accounts ->
                             AccountsHandler
             in
-                ( model, Cmd.map handler <| Monzo.makeApiRequest model.authToken endpoint )
+                ( model, Cmd.map handler <| Monzo.makeApiRequest "model.auth.accessToken" endpoint )
 
         WhoAmIHandler monzoMsg ->
             case Monzo.whoAmIHandler monzoMsg of

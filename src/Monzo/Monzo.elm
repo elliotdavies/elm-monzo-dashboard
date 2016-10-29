@@ -1,7 +1,6 @@
-module Monzo
+module Monzo.Monzo
     exposing
         ( Msg
-        , auth
         , Token
         , Endpoint(..)
         , makeApiRequest
@@ -40,13 +39,6 @@ type Endpoint
 baseUrl : String
 baseUrl =
     "https://api.monzo.com"
-
-
-{-| Authenticates with Monzo and returns an auth token
--}
-auth : Token
-auth =
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaSI6Im9hdXRoY2xpZW50XzAwMDA5NFB2SU5ER3pUM2s2dHo4anAiLCJleHAiOjE0NzUyNzkzNjksImlhdCI6MTQ3NTI1Nzc2OSwianRpIjoidG9rXzAwMDA5Q3FhSXBWcElDTHg1TG1XR24iLCJ1aSI6InVzZXJfMDAwMDk0Umd5NGJoUm55MmVURkdySiIsInYiOiIyIn0.qrANutco0c8qnEUEOcsZ5CGqcnzYMBQBKhxoM6uTeU0"
 
 
 {-| Makes a GET request with authentication
