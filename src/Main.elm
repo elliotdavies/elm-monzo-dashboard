@@ -2,6 +2,7 @@ module Main exposing (..)
 
 import Html exposing (..)
 import Html.App as App
+import Html.Attributes exposing (href)
 import Html.Events exposing (onClick)
 import Monzo.Auth as Auth
 import Monzo.Monzo as Monzo
@@ -77,7 +78,7 @@ update msg model =
                         Monzo.Accounts ->
                             AccountsHandler
             in
-                ( model, Cmd.map handler <| Monzo.makeApiRequest "model.auth.accessToken" endpoint )
+                ( model, Cmd.map handler <| Monzo.makeApiRequest (Just "model.auth.accessToken") endpoint )
 
         WhoAmIHandler monzoMsg ->
             case Monzo.whoAmIHandler monzoMsg of
@@ -98,72 +99,77 @@ update msg model =
 
 view : Model -> Html Msg
 view model =
+    if (Auth.loggedIn model.auth) then
+        loggedInView model
+    else
+        loggedOutView model
+
+
+loggedInView : Model -> Html Msg
+loggedInView model =
     let
-        errHtml =
-            let
-                message =
-                    case model.err of
-                        Just err ->
-                            err
+        buttons =
+            [ button [ onClick <| QueryMonzo Monzo.WhoAmI ] [ text "Get details" ]
+            , button [ onClick <| QueryMonzo Monzo.Accounts ] [ text "Get accounts" ]
+            ]
 
-                        Nothing ->
-                            "No errors... yet"
-            in
-                div []
-                    [ h3 [] [ text "Errors:" ]
-                    , div [] [ text message ]
-                    ]
-
-        whoAmIHtml =
-            let
-                heading =
-                    h3 [] [ text "Who am I:" ]
-            in
-                case model.whoAmIData of
-                    Just data ->
-                        div []
-                            [ heading
-                            , div []
-                                [ text <| "client_id: " ++ data.client_id
-                                , br [] []
-                                , text <| "user_id: " ++ data.user_id
-                                ]
-                            ]
-
-                    Nothing ->
-                        div []
-                            [ heading
-                            , text "..."
-                            ]
-
-        accountsHtml =
-            let
-                heading =
-                    h3 [] [ text "Accounts:" ]
-            in
-                case model.accountsData of
-                    Just data ->
-                        div []
-                            [ heading
-                            , div [] [ text <| toString data ]
-                            , div [] [ text <| "length: " ++ (toString <| List.length data) ]
-                            ]
-
-                    Nothing ->
-                        div []
-                            [ heading
-                            , text "..."
-                            ]
-
-        buttonsHtml =
+        print key value =
             div []
-                [ button [ onClick <| QueryMonzo Monzo.WhoAmI ] [ text "Get details" ]
-                , button [ onClick <| QueryMonzo Monzo.Accounts ] [ text "Get accounts" ]
+                [ strong [] [ text (key ++ ": ") ]
+                , text value
                 ]
+
+        whoAmIData =
+            case model.whoAmIData of
+                Just data ->
+                    div []
+                        [ h2 [] [ text "Your user data:" ]
+                        , print "client_id" data.client_id
+                        , print "user_id" data.user_id
+                        ]
+
+                Nothing ->
+                    div [] []
+
+        accountsData =
+            case model.accountsData of
+                Just data ->
+                    let
+                        accountData datum =
+                            div []
+                                [ print "account id" datum.id
+                                , print "created" datum.created
+                                , print "description" datum.description
+                                , hr [] []
+                                ]
+                    in
+                        div []
+                            [ h2 [] [ text "Your accounts data:" ]
+                            , div [] (List.map accountData data)
+                            ]
+
+                Nothing ->
+                    div [] []
     in
         div []
-            [ buttonsHtml
-            , errHtml
-            , whoAmIHtml
-            , accountsHtml
+            [ h1 [] [ text "You are logged in" ]
+            , hr [] []
+            , div [] buttons
+            , hr [] []
+            , whoAmIData
+            , hr [] []
+            , accountsData
+            , a [ onClick <| AuthMsg Auth.LogOut ] [ text "Log out" ]
+            , hr [] []
+            , pre [] [ text <| toString model.err ]
             ]
+
+
+loggedOutView : Model -> Html Msg
+loggedOutView model =
+    div []
+        [ h1 [] [ text "You are not logged in" ]
+        , div []
+            [ a [ href (Auth.initialAuthUrl model.auth) ] [ text "Log in now" ]
+            ]
+        ]

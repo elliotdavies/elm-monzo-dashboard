@@ -60,8 +60,8 @@ makeRequest token url =
 
 {-| Makes an API request to the given endpoint
 -}
-makeApiRequest : Token -> Endpoint -> Cmd Msg
-makeApiRequest token endpoint =
+makeApiRequest : Maybe Token -> Endpoint -> Cmd Msg
+makeApiRequest maybeToken endpoint =
     let
         url =
             case endpoint of
@@ -71,7 +71,12 @@ makeApiRequest token endpoint =
                 Accounts ->
                     baseUrl ++ "/accounts"
     in
-        makeRequest token url
+        case maybeToken of
+            Just token ->
+                makeRequest token url
+
+            Nothing ->
+                Cmd.none
 
 
 {-| Extracts either the "value" of an HTTP response from the API, or the error if the request failed

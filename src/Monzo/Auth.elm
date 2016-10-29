@@ -6,9 +6,11 @@ port module Monzo.Auth
         , init
         , update
         , initialAuthUrl
+        , loggedIn
         , storeStateToken
         , deleteStateToken
         , storeAccessToken
+        , deleteAccessToken
         )
 
 import String
@@ -118,6 +120,16 @@ init flags =
         )
 
 
+loggedIn : Model -> Bool
+loggedIn model =
+    case model.accessToken of
+        Just token ->
+            True
+
+        Nothing ->
+            False
+
+
 parseAddressFromUrl : String -> String
 parseAddressFromUrl url =
     let
@@ -169,9 +181,9 @@ parseTokensFromUrl url =
 
 type Msg
     = AuthFail Http.RawError
-    | AuthSuccess Http.Response
+    | AuthSucceed Http.Response
     | TokenGenFail String
-    | TokenGenSuccess String
+    | TokenGenSucceed String
     | LogOut
 
 
@@ -181,7 +193,7 @@ update msg model =
         AuthFail err ->
             ( { model | errorMsg = Just (toString err) }, Cmd.none )
 
-        AuthSuccess response ->
+        AuthSucceed response ->
             let
                 accessToken =
                     decodeAccessToken response.value
@@ -203,7 +215,7 @@ update msg model =
         TokenGenFail err ->
             ( { model | errorMsg = Just err }, Cmd.none )
 
-        TokenGenSuccess token ->
+        TokenGenSucceed token ->
             ( { model | stateToken = Just token }, storeStateToken token )
 
         LogOut ->
@@ -214,7 +226,7 @@ generateStateToken : Cmd Msg
 generateStateToken =
     -- Take the current time to use as a state token
     Task.map toString Time.now
-        |> Task.perform TokenGenFail TokenGenSuccess
+        |> Task.perform TokenGenFail TokenGenSucceed
 
 
 finishAuth : String -> String -> String -> String -> Cmd Msg
@@ -246,7 +258,7 @@ finishAuth authorizationCode clientId clientSecret redirectUri =
             }
     in
         Http.send Http.defaultSettings request
-            |> Task.perform AuthFail AuthSuccess
+            |> Task.perform AuthFail AuthSucceed
 
 
 decodeAccessToken : Http.Value -> Maybe String
