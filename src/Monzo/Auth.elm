@@ -13,9 +13,6 @@ port module Monzo.Auth
         , deleteAccessToken
         )
 
---import String
---import Time exposing (now)
-
 import Http
 import Json.Decode as Json
 import Task
@@ -264,10 +261,10 @@ accessTokenDecoder =
 
 
 -- These fields are also returned from the final auth POST
---("client_id" Json.field Json.string)
---("expires_in" Json.field Json.int)
---("token_type" Json.field Json.string)
---("user_id" Json.field Json.string)
+--(Json.field "client_id" Json.string)
+--(Json.field "expires_in" Json.int)
+--(Json.field "token_type" Json.string)
+--(Json.field "user_id" Json.string)
 
 
 initialAuthUrl : Model -> String
