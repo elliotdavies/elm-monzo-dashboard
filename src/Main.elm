@@ -1,7 +1,6 @@
 module Main exposing (..)
 
 import Html exposing (..)
-import Html.App as App
 import Html.Attributes exposing (href)
 import Html.Events exposing (onClick)
 import Monzo.Auth as Auth
@@ -9,7 +8,7 @@ import Monzo.Monzo as Monzo
 
 
 main =
-    App.programWithFlags
+    Html.programWithFlags
         { init = init
         , update = update
         , view = view

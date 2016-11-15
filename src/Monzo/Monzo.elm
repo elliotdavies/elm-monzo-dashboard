@@ -9,16 +9,13 @@ module Monzo.Monzo
         )
 
 import Http
-import Task
-import Json.Decode as Json exposing ((:=))
-import Debug
+import Json.Decode as Json
 
 
 {-| Types used by this module
 -}
 type Msg
-    = RequestSucceed Http.Response
-    | RequestFail Http.RawError
+    = RequestResult (Result Http.Error String)
 
 
 type alias Token =
@@ -43,19 +40,22 @@ baseUrl =
 
 {-| Makes a GET request with authentication
 -}
-getRequestWithAuth : Token -> Url -> Task.Task Http.RawError Http.Response
+getRequestWithAuth : Token -> Url -> Http.Request String
 getRequestWithAuth token url =
-    Http.send Http.defaultSettings
-        { verb = "GET"
-        , headers = [ ( "Authorization", "Bearer " ++ token ) ]
+    Http.request
+        { method = "GET"
+        , headers = [ Http.header "Authorization" ("Bearer " ++ token) ]
         , url = url
-        , body = Http.empty
+        , body = Http.emptyBody
+        , expect = Http.expectString
+        , timeout = Nothing
+        , withCredentials = False
         }
 
 
 makeRequest : Token -> Url -> Cmd Msg
 makeRequest token url =
-    Task.perform RequestFail RequestSucceed (getRequestWithAuth token url)
+    Http.send RequestResult (getRequestWithAuth token url)
 
 
 {-| Makes an API request to the given endpoint
@@ -84,15 +84,10 @@ makeApiRequest maybeToken endpoint =
 extractValueOrError : Msg -> Result String String
 extractValueOrError msg =
     case msg of
-        RequestSucceed data ->
-            case data.value of
-                Http.Text value ->
-                    Ok value
+        RequestResult (Ok data) ->
+            Ok data
 
-                _ ->
-                    Debug.crash "Somehow hit Http.Blob"
-
-        RequestFail failure ->
+        RequestResult (Err failure) ->
             Err ("Request failed: " ++ (toString failure))
 
 
@@ -119,12 +114,12 @@ accountsDecoder : Json.Decoder (List AccountData)
 accountsDecoder =
     let
         accountDecoder =
-            Json.object3 AccountData
-                ("id" := Json.string)
-                ("created" := Json.string)
-                ("description" := Json.string)
+            Json.map3 AccountData
+                (Json.field "id" Json.string)
+                (Json.field "created" Json.string)
+                (Json.field "description" Json.string)
     in
-        "accounts" := Json.list accountDecoder
+        Json.field "accounts" (Json.list accountDecoder)
 
 
 {-| Code related to the /whoami endpoint
@@ -147,6 +142,6 @@ whoAmIHandler msg =
 
 whoAmIDecoder : Json.Decoder WhoAmIData
 whoAmIDecoder =
-    Json.object2 WhoAmIData
-        ("client_id" := Json.string)
-        ("user_id" := Json.string)
+    Json.map2 WhoAmIData
+        (Json.field "client_id" Json.string)
+        (Json.field "user_id" Json.string)

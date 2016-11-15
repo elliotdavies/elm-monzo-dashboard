@@ -13,11 +13,13 @@ port module Monzo.Auth
         , deleteAccessToken
         )
 
-import String
-import Time exposing (now)
+--import String
+--import Time exposing (now)
+
 import Http
-import Json.Decode as Json exposing ((:=))
+import Json.Decode as Json
 import Task
+import Time
 
 
 port storeStateToken : String -> Cmd msg
@@ -64,12 +66,12 @@ init flags =
         authorizationCodeFromUrl : Maybe String
         authorizationCodeFromUrl =
             -- If we're in the middle of the auth process, Monzo will have returned an auth code
-            Maybe.map fst parsedTokens
+            Maybe.map Tuple.first parsedTokens
 
         stateTokenFromUrl : Maybe String
         stateTokenFromUrl =
             -- If we're in the middle of the auth process, Monzo will have returned a state token
-            Maybe.map snd parsedTokens
+            Maybe.map Tuple.second parsedTokens
 
         hasStoredStateToken : Bool
         hasStoredStateToken =
@@ -154,7 +156,7 @@ parseTokensFromUrl url =
 
         findIn list key =
             list
-                |> List.filter (\a -> fst a == key)
+                |> List.filter (\a -> Tuple.first a == key)
                 |> List.head
 
         args =
@@ -173,49 +175,35 @@ parseTokensFromUrl url =
     in
         case ( code, state ) of
             ( Just c, Just s ) ->
-                Just ( snd c, snd s )
+                Just ( Tuple.second c, Tuple.second s )
 
             _ ->
                 Nothing
 
 
 type Msg
-    = AuthFail Http.RawError
-    | AuthSucceed Http.Response
-    | TokenGenFail String
-    | TokenGenSucceed String
+    = AuthResult (Result Http.Error String)
+    | NewStateToken String
     | LogOut
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        AuthFail err ->
+        AuthResult (Err err) ->
             ( { model | errorMsg = Just (toString err) }, Cmd.none )
 
-        AuthSucceed response ->
+        AuthResult (Ok token) ->
             let
-                accessToken =
-                    decodeAccessToken response.value
-
                 accessTokenCmd =
-                    case accessToken of
-                        Just token ->
-                            storeAccessToken token
+                    storeAccessToken token
 
-                        Nothing ->
-                            Cmd.none
-
-                -- Delete the old state token now that we're finished authing
                 stateTokenCmd =
                     deleteStateToken ()
             in
-                ( { model | accessToken = accessToken }, Cmd.batch [ accessTokenCmd, stateTokenCmd ] )
+                ( { model | accessToken = Just token }, Cmd.batch [ accessTokenCmd, stateTokenCmd ] )
 
-        TokenGenFail err ->
-            ( { model | errorMsg = Just err }, Cmd.none )
-
-        TokenGenSucceed token ->
+        NewStateToken token ->
             ( { model | stateToken = Just token }, storeStateToken token )
 
         LogOut ->
@@ -226,7 +214,14 @@ generateStateToken : Cmd Msg
 generateStateToken =
     -- Take the current time to use as a state token
     Task.map toString Time.now
-        |> Task.perform TokenGenFail TokenGenSucceed
+        |> Task.perform NewStateToken
+
+
+encodeUriParameters : List ( String, String ) -> String
+encodeUriParameters keyValuePairs =
+    keyValuePairs
+        |> List.map (\( k, v ) -> k ++ "=" ++ (Http.encodeUri v))
+        |> String.join "&"
 
 
 finishAuth : String -> String -> String -> String -> Cmd Msg
@@ -245,56 +240,49 @@ finishAuth authorizationCode clientId clientSecret redirectUri =
 
         body =
             fields
-                |> List.map (\( k, v ) -> k ++ "=" ++ (Http.uriEncode v))
-                |> String.join "&"
-                |> Http.string
+                |> encodeUriParameters
+                |> Http.stringBody "application/x-www-form-urlencoded"
 
         request =
-            { verb = "POST"
-            , headers =
-                [ ( "Content-Type", "application/x-www-form-urlencoded" ) ]
-            , url = url
-            , body = body
-            }
+            Http.request
+                { method = "POST"
+                , headers = []
+                , url = url
+                , body = body
+                , expect = Http.expectJson accessTokenDecoder
+                , timeout = Nothing
+                , withCredentials = False
+                }
     in
-        Http.send Http.defaultSettings request
-            |> Task.perform AuthFail AuthSucceed
-
-
-decodeAccessToken : Http.Value -> Maybe String
-decodeAccessToken value =
-    case value of
-        Http.Text str ->
-            Result.toMaybe (Json.decodeString accessTokenDecoder str)
-
-        _ ->
-            Nothing
+        Http.send AuthResult request
 
 
 accessTokenDecoder : Json.Decoder String
 accessTokenDecoder =
-    "access_token" := Json.string
+    Json.field "access_token" Json.string
 
 
 
 -- These fields are also returned from the final auth POST
---("client_id" := Json.string)
---("expires_in" := Json.int)
---("token_type" := Json.string)
---("user_id" := Json.string)
+--("client_id" Json.field Json.string)
+--("expires_in" Json.field Json.int)
+--("token_type" Json.field Json.string)
+--("user_id" Json.field Json.string)
 
 
 initialAuthUrl : Model -> String
 initialAuthUrl model =
     case model.stateToken of
         Just token ->
-            Http.url
-                "https://auth.getmondo.co.uk"
-                [ ( "client_id", model.clientId )
-                , ( "redirect_uri", model.redirectUri )
-                , ( "response_type", "code" )
-                , ( "state", token )
-                ]
+            let
+                params =
+                    [ ( "client_id", model.clientId )
+                    , ( "redirect_uri", model.redirectUri )
+                    , ( "response_type", "code" )
+                    , ( "state", token )
+                    ]
+            in
+                "https://auth.getmondo.co.uk?" ++ (encodeUriParameters params)
 
         Nothing ->
             "/"

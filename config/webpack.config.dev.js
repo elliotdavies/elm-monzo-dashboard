@@ -1,3 +1,4 @@
+const autoprefixer = require('autoprefixer');
 const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const paths = require('../config/paths');
@@ -9,7 +10,7 @@ module.exports = {
   entry: [
 
     // WebpackDevServer client.
-    require.resolve('webpack-dev-server/client') + '?/',
+    require.resolve('react-dev-utils/webpackHotDevClient'),
 
     // Replacement runtime.
     require.resolve('webpack/hot/dev-server'),
@@ -48,7 +49,7 @@ module.exports = {
       },
       {
         test: /\.css$/,
-        loader: 'style!css'
+        loader: 'style!css!postcss'
       },
       {
         test: /\.(ico|jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2)(\?.*)?$/,
@@ -59,6 +60,18 @@ module.exports = {
         }
       }
     ]
+  },
+  postcss: function() {
+    return [
+      autoprefixer({
+        browsers: [
+          '>1%',
+          'last 4 versions',
+          'Firefox ESR',
+          'not ie < 9'
+        ]
+      })
+    ];
   },
   plugins: [
     new HtmlWebpackPlugin({
