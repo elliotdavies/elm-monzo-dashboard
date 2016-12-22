@@ -3,6 +3,7 @@ module Main exposing (..)
 import Html exposing (..)
 import Html.Attributes exposing (href)
 import Html.Events exposing (onClick)
+import Json.Decode as Json
 import Monzo.Auth as Auth
 import Monzo.Monzo as Monzo
 
@@ -51,9 +52,8 @@ init flags =
 
 
 type Msg
-    = QueryMonzo Monzo.Endpoint
-    | WhoAmIHandler Monzo.Msg
-    | AccountsHandler Monzo.Msg
+    = MonzoRequest Monzo.Endpoint
+    | MonzoResponse Monzo.Endpoint Monzo.Msg
     | AuthMsg Auth.Msg
 
 
@@ -67,33 +67,43 @@ update msg model =
             in
                 ( { model | auth = authModel }, Cmd.map AuthMsg authCmds )
 
-        QueryMonzo endpoint ->
+        MonzoRequest endpoint ->
             let
-                handler =
-                    case endpoint of
-                        Monzo.WhoAmI ->
-                            WhoAmIHandler
+                token =
+                    Maybe.withDefault "" model.auth.accessToken
 
-                        Monzo.Accounts ->
-                            AccountsHandler
+                request =
+                    Monzo.makeApiRequest token endpoint
+
+                responseMsg =
+                    MonzoResponse endpoint
             in
-                ( model, Cmd.map handler <| Monzo.makeApiRequest model.auth.accessToken endpoint )
+                ( model, Cmd.map responseMsg request )
 
-        WhoAmIHandler monzoMsg ->
-            case Monzo.whoAmIHandler monzoMsg of
-                Ok success ->
-                    ( { model | err = Nothing, whoAmIData = Just success }, Cmd.none )
+        MonzoResponse endpoint monzoMsg ->
+            ( handleMonzoResponse model endpoint monzoMsg, Cmd.none )
 
-                Err err ->
-                    ( { model | err = Just err, whoAmIData = Nothing }, Cmd.none )
 
-        AccountsHandler monzoMsg ->
-            case Monzo.accountsHandler monzoMsg of
-                Ok success ->
-                    ( { model | err = Nothing, accountsData = Just success }, Cmd.none )
+handleMonzoResponse : Model -> Monzo.Endpoint -> Monzo.Msg -> Model
+handleMonzoResponse model endpoint monzoMsg =
+    let
+        handledResponse =
+            Monzo.handleApiResponse monzoMsg
 
-                Err err ->
-                    ( { model | err = Just err, accountsData = Nothing }, Cmd.none )
+        decodeAndUpdate data =
+            case endpoint of
+                Monzo.WhoAmI ->
+                    { model | whoAmIData = Result.toMaybe (Json.decodeString Monzo.whoAmIDecoder data) }
+
+                Monzo.Accounts ->
+                    { model | accountsData = Result.toMaybe (Json.decodeString Monzo.accountsDecoder data) }
+    in
+        case handledResponse of
+            Ok data ->
+                decodeAndUpdate data
+
+            Err err ->
+                { model | err = Just (toString err) }
 
 
 view : Model -> Html Msg
@@ -108,8 +118,8 @@ loggedInView : Model -> Html Msg
 loggedInView model =
     let
         buttons =
-            [ button [ onClick <| QueryMonzo Monzo.WhoAmI ] [ text "Get details" ]
-            , button [ onClick <| QueryMonzo Monzo.Accounts ] [ text "Get accounts" ]
+            [ button [ onClick <| MonzoRequest Monzo.WhoAmI ] [ text "Get details" ]
+            , button [ onClick <| MonzoRequest Monzo.Accounts ] [ text "Get accounts" ]
             ]
 
         print key value =

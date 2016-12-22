@@ -1,11 +1,11 @@
 module Monzo.Monzo
     exposing
         ( Msg
-        , Token
         , Endpoint(..)
         , makeApiRequest
-        , whoAmIHandler
-        , accountsHandler
+        , handleApiResponse
+        , whoAmIDecoder
+        , accountsDecoder
         )
 
 import Http
@@ -33,15 +33,25 @@ type Endpoint
 
 {-| Internal module setup
 -}
-baseUrl : String
+baseUrl : Url
 baseUrl =
     "https://api.monzo.com"
 
 
+buildUrl : Endpoint -> Url
+buildUrl endpoint =
+    case endpoint of
+        WhoAmI ->
+            baseUrl ++ "/ping/whoami"
+
+        Accounts ->
+            baseUrl ++ "/accounts"
+
+
 {-| Makes a GET request with authentication
 -}
-getRequestWithAuth : Token -> Url -> Http.Request String
-getRequestWithAuth token url =
+buildAuthRequest : Token -> Url -> Http.Request String
+buildAuthRequest token url =
     Http.request
         { method = "GET"
         , headers = [ Http.header "Authorization" ("Bearer " ++ token) ]
@@ -53,36 +63,24 @@ getRequestWithAuth token url =
         }
 
 
-makeRequest : Token -> Url -> Cmd Msg
-makeRequest token url =
-    Http.send RequestResult (getRequestWithAuth token url)
-
-
 {-| Makes an API request to the given endpoint
 -}
-makeApiRequest : Maybe Token -> Endpoint -> Cmd Msg
-makeApiRequest maybeToken endpoint =
+makeApiRequest : Token -> Endpoint -> Cmd Msg
+makeApiRequest token endpoint =
     let
         url =
-            case endpoint of
-                WhoAmI ->
-                    baseUrl ++ "/ping/whoami"
+            buildUrl endpoint
 
-                Accounts ->
-                    baseUrl ++ "/accounts"
+        request =
+            buildAuthRequest token url
     in
-        case maybeToken of
-            Just token ->
-                makeRequest token url
-
-            Nothing ->
-                Cmd.none
+        Http.send RequestResult request
 
 
 {-| Extracts either the "value" of an HTTP response from the API, or the error if the request failed
 -}
-extractValueOrError : Msg -> Result String String
-extractValueOrError msg =
+handleApiResponse : Msg -> Result String String
+handleApiResponse msg =
     case msg of
         RequestResult (Ok data) ->
             Ok data
@@ -100,17 +98,16 @@ type alias AccountData =
     }
 
 
-accountsHandler : Msg -> Result String (List AccountData)
-accountsHandler msg =
-    case extractValueOrError msg of
-        Ok data ->
-            Json.decodeString accountsDecoder data
-
-        Err err ->
-            Err err
+type alias AccountsData =
+    List AccountData
 
 
-accountsDecoder : Json.Decoder (List AccountData)
+decodeAccounts : String -> Result String AccountsData
+decodeAccounts =
+    Json.decodeString accountsDecoder
+
+
+accountsDecoder : Json.Decoder AccountsData
 accountsDecoder =
     let
         accountDecoder =
@@ -128,16 +125,6 @@ type alias WhoAmIData =
     { client_id : String
     , user_id : String
     }
-
-
-whoAmIHandler : Msg -> Result String WhoAmIData
-whoAmIHandler msg =
-    case extractValueOrError msg of
-        Ok data ->
-            Json.decodeString whoAmIDecoder data
-
-        Err err ->
-            Err err
 
 
 whoAmIDecoder : Json.Decoder WhoAmIData
