@@ -3,8 +3,9 @@ module Monzo.Monzo
         ( Msg
         , Endpoint(..)
         , makeApiRequest
-        , handleApiResponse
+        , WhoAmIData
         , whoAmIDecoder
+        , AccountsData
         , accountsDecoder
         )
 
@@ -50,14 +51,14 @@ buildUrl endpoint =
 
 {-| Makes a GET request with authentication
 -}
-buildAuthRequest : Token -> Url -> Http.Request String
-buildAuthRequest token url =
+buildAuthRequest : Token -> Url -> Json.Decoder a -> Http.Request a
+buildAuthRequest token url decoder =
     Http.request
         { method = "GET"
         , headers = [ Http.header "Authorization" ("Bearer " ++ token) ]
         , url = url
         , body = Http.emptyBody
-        , expect = Http.expectString
+        , expect = Http.expectJson decoder
         , timeout = Nothing
         , withCredentials = False
         }
@@ -65,28 +66,41 @@ buildAuthRequest token url =
 
 {-| Makes an API request to the given endpoint
 -}
-makeApiRequest : Token -> Endpoint -> Cmd Msg
-makeApiRequest token endpoint =
+makeApiRequest : Token -> Endpoint -> Json.Decoder a -> (Result String a -> msg) -> Cmd msg
+makeApiRequest token endpoint decoder msg =
     let
         url =
             buildUrl endpoint
 
         request =
-            buildAuthRequest token url
+            buildAuthRequest token url decoder
+
+        transformError : Result Http.Error a -> Result String a
+        transformError =
+            Result.mapError handleApiError
     in
-        Http.send RequestResult request
+        Http.send (transformError >> msg) request
 
 
-{-| Extracts either the "value" of an HTTP response from the API, or the error if the request failed
+{-| Transform an Http.Error into a nicely formatted String
 -}
-handleApiResponse : Msg -> Result String String
-handleApiResponse msg =
-    case msg of
-        RequestResult (Ok data) ->
-            Ok data
+handleApiError : Http.Error -> String
+handleApiError error =
+    case error of
+        Http.BadUrl str ->
+            "Error: " ++ str ++ " is not a valid URL"
 
-        RequestResult (Err failure) ->
-            Err ("Request failed: " ++ (toString failure))
+        Http.Timeout ->
+            "Error: Response timed out"
+
+        Http.NetworkError ->
+            "Error: Network error (check your connection)"
+
+        Http.BadStatus response ->
+            "Error: " ++ response.body
+
+        Http.BadPayload str response ->
+            "Error: " ++ str
 
 
 {-| Code related to the /accounts endpoint
@@ -100,11 +114,6 @@ type alias AccountData =
 
 type alias AccountsData =
     List AccountData
-
-
-decodeAccounts : String -> Result String AccountsData
-decodeAccounts =
-    Json.decodeString accountsDecoder
 
 
 accountsDecoder : Json.Decoder AccountsData

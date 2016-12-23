@@ -3,11 +3,11 @@ module Main exposing (..)
 import Html exposing (..)
 import Html.Attributes exposing (href)
 import Html.Events exposing (onClick)
-import Json.Decode as Json
 import Monzo.Auth as Auth
 import Monzo.Monzo as Monzo
 
 
+main : Program Auth.Flags Model Msg
 main =
     Html.programWithFlags
         { init = init
@@ -52,58 +52,44 @@ init flags =
 
 
 type Msg
-    = MonzoRequest Monzo.Endpoint
-    | MonzoResponse Monzo.Endpoint Monzo.Msg
-    | AuthMsg Auth.Msg
+    = AuthMsg Auth.Msg
+    | WhoAmIRequest
+    | WhoAmIResponse (Result String Monzo.WhoAmIData)
+    | AccountsRequest
+    | AccountsResponse (Result String Monzo.AccountsData)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        AuthMsg authMsg ->
-            let
-                ( authModel, authCmds ) =
-                    Auth.update authMsg model.auth
-            in
-                ( { model | auth = authModel }, Cmd.map AuthMsg authCmds )
-
-        MonzoRequest endpoint ->
-            let
-                token =
-                    Maybe.withDefault "" model.auth.accessToken
-
-                request =
-                    Monzo.makeApiRequest token endpoint
-
-                responseMsg =
-                    MonzoResponse endpoint
-            in
-                ( model, Cmd.map responseMsg request )
-
-        MonzoResponse endpoint monzoMsg ->
-            ( handleMonzoResponse model endpoint monzoMsg, Cmd.none )
-
-
-handleMonzoResponse : Model -> Monzo.Endpoint -> Monzo.Msg -> Model
-handleMonzoResponse model endpoint monzoMsg =
     let
-        handledResponse =
-            Monzo.handleApiResponse monzoMsg
-
-        decodeAndUpdate data =
-            case endpoint of
-                Monzo.WhoAmI ->
-                    { model | whoAmIData = Result.toMaybe (Json.decodeString Monzo.whoAmIDecoder data) }
-
-                Monzo.Accounts ->
-                    { model | accountsData = Result.toMaybe (Json.decodeString Monzo.accountsDecoder data) }
+        token =
+            Maybe.withDefault "" model.auth.accessToken
     in
-        case handledResponse of
-            Ok data ->
-                decodeAndUpdate data
+        case msg of
+            AuthMsg authMsg ->
+                let
+                    ( authModel, authCmds ) =
+                        Auth.update authMsg model.auth
+                in
+                    ( { model | auth = authModel }, Cmd.map AuthMsg authCmds )
 
-            Err err ->
-                { model | err = Just (toString err) }
+            WhoAmIRequest ->
+                ( model, Monzo.makeApiRequest token Monzo.WhoAmI Monzo.whoAmIDecoder WhoAmIResponse )
+
+            WhoAmIResponse (Ok data) ->
+                ( { model | whoAmIData = Just data }, Cmd.none )
+
+            WhoAmIResponse (Err err) ->
+                ( { model | err = Just err }, Cmd.none )
+
+            AccountsRequest ->
+                ( model, Monzo.makeApiRequest token Monzo.Accounts Monzo.accountsDecoder AccountsResponse )
+
+            AccountsResponse (Ok data) ->
+                ( { model | accountsData = Just data }, Cmd.none )
+
+            AccountsResponse (Err err) ->
+                ( { model | err = Just err }, Cmd.none )
 
 
 view : Model -> Html Msg
@@ -118,8 +104,8 @@ loggedInView : Model -> Html Msg
 loggedInView model =
     let
         buttons =
-            [ button [ onClick <| MonzoRequest Monzo.WhoAmI ] [ text "Get details" ]
-            , button [ onClick <| MonzoRequest Monzo.Accounts ] [ text "Get accounts" ]
+            [ button [ onClick WhoAmIRequest ] [ text "Get details" ]
+            , button [ onClick AccountsRequest ] [ text "Get accounts" ]
             ]
 
         print key value =
