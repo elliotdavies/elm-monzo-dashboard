@@ -5,8 +5,10 @@ module Monzo.Monzo
         , makeApiRequest
         , WhoAmIData
         , whoAmIDecoder
+        , requestWhoAmI
         , AccountsData
         , accountsDecoder
+        , requestAccounts
         )
 
 import Http
@@ -103,6 +105,26 @@ handleApiError error =
             "Error: " ++ str
 
 
+{-| Code related to the /whoami endpoint
+-}
+type alias WhoAmIData =
+    { client_id : String
+    , user_id : String
+    }
+
+
+whoAmIDecoder : Json.Decoder WhoAmIData
+whoAmIDecoder =
+    Json.map2 WhoAmIData
+        (Json.field "client_id" Json.string)
+        (Json.field "user_id" Json.string)
+
+
+requestWhoAmI : Token -> (Result String WhoAmIData -> msg) -> Cmd msg
+requestWhoAmI token msg =
+    makeApiRequest token WhoAmI whoAmIDecoder msg
+
+
 {-| Code related to the /accounts endpoint
 -}
 type alias AccountData =
@@ -128,16 +150,6 @@ accountsDecoder =
         Json.field "accounts" (Json.list accountDecoder)
 
 
-{-| Code related to the /whoami endpoint
--}
-type alias WhoAmIData =
-    { client_id : String
-    , user_id : String
-    }
-
-
-whoAmIDecoder : Json.Decoder WhoAmIData
-whoAmIDecoder =
-    Json.map2 WhoAmIData
-        (Json.field "client_id" Json.string)
-        (Json.field "user_id" Json.string)
+requestAccounts : Token -> (Result String AccountsData -> msg) -> Cmd msg
+requestAccounts token msg =
+    makeApiRequest token Accounts accountsDecoder msg

@@ -74,22 +74,34 @@ update msg model =
                     ( { model | auth = authModel }, Cmd.map AuthMsg authCmds )
 
             WhoAmIRequest ->
-                ( model, Monzo.makeApiRequest token Monzo.WhoAmI Monzo.whoAmIDecoder WhoAmIResponse )
+                ( model, Monzo.requestWhoAmI token WhoAmIResponse )
 
-            WhoAmIResponse (Ok data) ->
-                ( { model | whoAmIData = Just data }, Cmd.none )
+            WhoAmIResponse result ->
+                let
+                    newModel =
+                        case result of
+                            Ok data ->
+                                { model | whoAmIData = Just data }
 
-            WhoAmIResponse (Err err) ->
-                ( { model | err = Just err }, Cmd.none )
+                            Err err ->
+                                { model | err = Just err }
+                in
+                    ( newModel, Cmd.none )
 
             AccountsRequest ->
-                ( model, Monzo.makeApiRequest token Monzo.Accounts Monzo.accountsDecoder AccountsResponse )
+                ( model, Monzo.requestAccounts token AccountsResponse )
 
-            AccountsResponse (Ok data) ->
-                ( { model | accountsData = Just data }, Cmd.none )
+            AccountsResponse result ->
+                let
+                    newModel =
+                        case result of
+                            Ok data ->
+                                { model | accountsData = Just data }
 
-            AccountsResponse (Err err) ->
-                ( { model | err = Just err }, Cmd.none )
+                            Err err ->
+                                { model | err = Just err }
+                in
+                    ( newModel, Cmd.none )
 
 
 view : Model -> Html Msg
@@ -108,6 +120,9 @@ loggedInView model =
             , button [ onClick AccountsRequest ] [ text "Get accounts" ]
             ]
 
+        empty =
+            div [] []
+
         print key value =
             div []
                 [ strong [] [ text (key ++ ": ") ]
@@ -124,7 +139,7 @@ loggedInView model =
                         ]
 
                 Nothing ->
-                    div [] []
+                    empty
 
         accountsData =
             case model.accountsData of
@@ -144,7 +159,7 @@ loggedInView model =
                             ]
 
                 Nothing ->
-                    div [] []
+                    empty
     in
         div []
             [ h1 [] [ text "You are logged in" ]
