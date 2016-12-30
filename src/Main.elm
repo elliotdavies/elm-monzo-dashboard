@@ -7,6 +7,7 @@ import Monzo.Auth as Auth
 import Monzo.Monzo as Monzo
 
 
+main : Program Auth.Flags Model Msg
 main =
     Html.programWithFlags
         { init = init
@@ -51,49 +52,56 @@ init flags =
 
 
 type Msg
-    = QueryMonzo Monzo.Endpoint
-    | WhoAmIHandler Monzo.Msg
-    | AccountsHandler Monzo.Msg
-    | AuthMsg Auth.Msg
+    = AuthMsg Auth.Msg
+    | WhoAmIRequest
+    | WhoAmIResponse (Result String Monzo.WhoAmIData)
+    | AccountsRequest
+    | AccountsResponse (Result String Monzo.AccountsData)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    case msg of
-        AuthMsg authMsg ->
-            let
-                ( authModel, authCmds ) =
-                    Auth.update authMsg model.auth
-            in
-                ( { model | auth = authModel }, Cmd.map AuthMsg authCmds )
+    let
+        token =
+            Maybe.withDefault "" model.auth.accessToken
+    in
+        case msg of
+            AuthMsg authMsg ->
+                let
+                    ( authModel, authCmds ) =
+                        Auth.update authMsg model.auth
+                in
+                    ( { model | auth = authModel }, Cmd.map AuthMsg authCmds )
 
-        QueryMonzo endpoint ->
-            let
-                handler =
-                    case endpoint of
-                        Monzo.WhoAmI ->
-                            WhoAmIHandler
+            WhoAmIRequest ->
+                ( model, Monzo.requestWhoAmI token WhoAmIResponse )
 
-                        Monzo.Accounts ->
-                            AccountsHandler
-            in
-                ( model, Cmd.map handler <| Monzo.makeApiRequest model.auth.accessToken endpoint )
+            WhoAmIResponse result ->
+                let
+                    newModel =
+                        case result of
+                            Ok data ->
+                                { model | whoAmIData = Just data }
 
-        WhoAmIHandler monzoMsg ->
-            case Monzo.whoAmIHandler monzoMsg of
-                Ok success ->
-                    ( { model | err = Nothing, whoAmIData = Just success }, Cmd.none )
+                            Err err ->
+                                { model | err = Just err }
+                in
+                    ( newModel, Cmd.none )
 
-                Err err ->
-                    ( { model | err = Just err, whoAmIData = Nothing }, Cmd.none )
+            AccountsRequest ->
+                ( model, Monzo.requestAccounts token AccountsResponse )
 
-        AccountsHandler monzoMsg ->
-            case Monzo.accountsHandler monzoMsg of
-                Ok success ->
-                    ( { model | err = Nothing, accountsData = Just success }, Cmd.none )
+            AccountsResponse result ->
+                let
+                    newModel =
+                        case result of
+                            Ok data ->
+                                { model | accountsData = Just data }
 
-                Err err ->
-                    ( { model | err = Just err, accountsData = Nothing }, Cmd.none )
+                            Err err ->
+                                { model | err = Just err }
+                in
+                    ( newModel, Cmd.none )
 
 
 view : Model -> Html Msg
@@ -108,9 +116,12 @@ loggedInView : Model -> Html Msg
 loggedInView model =
     let
         buttons =
-            [ button [ onClick <| QueryMonzo Monzo.WhoAmI ] [ text "Get details" ]
-            , button [ onClick <| QueryMonzo Monzo.Accounts ] [ text "Get accounts" ]
+            [ button [ onClick WhoAmIRequest ] [ text "Get details" ]
+            , button [ onClick AccountsRequest ] [ text "Get accounts" ]
             ]
+
+        empty =
+            div [] []
 
         print key value =
             div []
@@ -128,7 +139,7 @@ loggedInView model =
                         ]
 
                 Nothing ->
-                    div [] []
+                    empty
 
         accountsData =
             case model.accountsData of
@@ -148,7 +159,7 @@ loggedInView model =
                             ]
 
                 Nothing ->
-                    div [] []
+                    empty
     in
         div []
             [ h1 [] [ text "You are logged in" ]

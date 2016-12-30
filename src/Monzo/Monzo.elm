@@ -1,11 +1,14 @@
 module Monzo.Monzo
     exposing
         ( Msg
-        , Token
         , Endpoint(..)
         , makeApiRequest
-        , whoAmIHandler
-        , accountsHandler
+        , WhoAmIData
+        , whoAmIDecoder
+        , requestWhoAmI
+        , AccountsData
+        , accountsDecoder
+        , requestAccounts
         )
 
 import Http
@@ -33,62 +36,93 @@ type Endpoint
 
 {-| Internal module setup
 -}
-baseUrl : String
+baseUrl : Url
 baseUrl =
     "https://api.monzo.com"
 
 
+buildUrl : Endpoint -> Url
+buildUrl endpoint =
+    case endpoint of
+        WhoAmI ->
+            baseUrl ++ "/ping/whoami"
+
+        Accounts ->
+            baseUrl ++ "/accounts"
+
+
 {-| Makes a GET request with authentication
 -}
-getRequestWithAuth : Token -> Url -> Http.Request String
-getRequestWithAuth token url =
+buildAuthRequest : Token -> Url -> Json.Decoder a -> Http.Request a
+buildAuthRequest token url decoder =
     Http.request
         { method = "GET"
         , headers = [ Http.header "Authorization" ("Bearer " ++ token) ]
         , url = url
         , body = Http.emptyBody
-        , expect = Http.expectString
+        , expect = Http.expectJson decoder
         , timeout = Nothing
         , withCredentials = False
         }
 
 
-makeRequest : Token -> Url -> Cmd Msg
-makeRequest token url =
-    Http.send RequestResult (getRequestWithAuth token url)
-
-
 {-| Makes an API request to the given endpoint
 -}
-makeApiRequest : Maybe Token -> Endpoint -> Cmd Msg
-makeApiRequest maybeToken endpoint =
+makeApiRequest : Token -> Endpoint -> Json.Decoder a -> (Result String a -> msg) -> Cmd msg
+makeApiRequest token endpoint decoder msg =
     let
         url =
-            case endpoint of
-                WhoAmI ->
-                    baseUrl ++ "/ping/whoami"
+            buildUrl endpoint
 
-                Accounts ->
-                    baseUrl ++ "/accounts"
+        request =
+            buildAuthRequest token url decoder
+
+        transformError : Result Http.Error a -> Result String a
+        transformError =
+            Result.mapError handleApiError
     in
-        case maybeToken of
-            Just token ->
-                makeRequest token url
-
-            Nothing ->
-                Cmd.none
+        Http.send (transformError >> msg) request
 
 
-{-| Extracts either the "value" of an HTTP response from the API, or the error if the request failed
+{-| Transform an Http.Error into a nicely formatted String
 -}
-extractValueOrError : Msg -> Result String String
-extractValueOrError msg =
-    case msg of
-        RequestResult (Ok data) ->
-            Ok data
+handleApiError : Http.Error -> String
+handleApiError error =
+    case error of
+        Http.BadUrl str ->
+            "Error: " ++ str ++ " is not a valid URL"
 
-        RequestResult (Err failure) ->
-            Err ("Request failed: " ++ (toString failure))
+        Http.Timeout ->
+            "Error: Response timed out"
+
+        Http.NetworkError ->
+            "Error: Network error (check your connection)"
+
+        Http.BadStatus response ->
+            "Error: " ++ response.body
+
+        Http.BadPayload str response ->
+            "Error: " ++ str
+
+
+{-| Code related to the /whoami endpoint
+-}
+type alias WhoAmIData =
+    { client_id : String
+    , user_id : String
+    }
+
+
+whoAmIDecoder : Json.Decoder WhoAmIData
+whoAmIDecoder =
+    Json.map2 WhoAmIData
+        (Json.field "client_id" Json.string)
+        (Json.field "user_id" Json.string)
+
+
+requestWhoAmI : Token -> (Result String WhoAmIData -> msg) -> Cmd msg
+requestWhoAmI token msg =
+    makeApiRequest token WhoAmI whoAmIDecoder msg
 
 
 {-| Code related to the /accounts endpoint
@@ -100,17 +134,11 @@ type alias AccountData =
     }
 
 
-accountsHandler : Msg -> Result String (List AccountData)
-accountsHandler msg =
-    case extractValueOrError msg of
-        Ok data ->
-            Json.decodeString accountsDecoder data
-
-        Err err ->
-            Err err
+type alias AccountsData =
+    List AccountData
 
 
-accountsDecoder : Json.Decoder (List AccountData)
+accountsDecoder : Json.Decoder AccountsData
 accountsDecoder =
     let
         accountDecoder =
@@ -122,26 +150,6 @@ accountsDecoder =
         Json.field "accounts" (Json.list accountDecoder)
 
 
-{-| Code related to the /whoami endpoint
--}
-type alias WhoAmIData =
-    { client_id : String
-    , user_id : String
-    }
-
-
-whoAmIHandler : Msg -> Result String WhoAmIData
-whoAmIHandler msg =
-    case extractValueOrError msg of
-        Ok data ->
-            Json.decodeString whoAmIDecoder data
-
-        Err err ->
-            Err err
-
-
-whoAmIDecoder : Json.Decoder WhoAmIData
-whoAmIDecoder =
-    Json.map2 WhoAmIData
-        (Json.field "client_id" Json.string)
-        (Json.field "user_id" Json.string)
+requestAccounts : Token -> (Result String AccountsData -> msg) -> Cmd msg
+requestAccounts token msg =
+    makeApiRequest token Accounts accountsDecoder msg
